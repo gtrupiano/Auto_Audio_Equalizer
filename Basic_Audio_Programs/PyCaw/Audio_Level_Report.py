@@ -39,9 +39,6 @@ def Audio_Level_Report():
                 except Exception as e:
                     print(f"Could not retrieve audio level for {process.name()}: {e}")
 
-
-        
-        
         time.sleep(0.1)
 
     print("\nStopping monitoring...")
@@ -50,10 +47,6 @@ def Audio_Level_Report():
     for program in Program_Sessions:
         #print(program.Program + " " + str(int((program.Audio_Level)*100)) + "%")
         print(f"{program.Program}: {program.Audio_Level * 100:.1f}%")
-
-
-
-
 
 # Run the audio monitoring
 Audio_Level_Report()
