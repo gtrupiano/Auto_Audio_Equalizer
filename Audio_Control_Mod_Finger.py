@@ -1,11 +1,8 @@
 from ctypes import cast, POINTER
 from comtypes import CLSCTX_ALL
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-import time
-import msvcrt  # Windows-specific module to capture key events
 import cv2
 import mediapipe as mp
-import numpy as np
 import math
 
 # Get the current master volume as a scalar (0.0 to 1.0)
@@ -26,25 +23,39 @@ def Initialization():
     interface = device.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
     volume = cast(interface, POINTER(IAudioEndpointVolume))
 
+def Get_Frame():
+    global imageRGB, height, width, frame_area
+    success, image = cap.read()
+    imageRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    imageRGB = cv2.flip(imageRGB,1)
+    imageRGB = cv2.cvtColor(imageRGB, cv2.COLOR_RGB2BGR)
+
+    height, width = imageRGB.shape[:2]
+    frame_area = width * height
+
+
 def Get_Audio_Levels():
     # Get the current master volume as a scalar (0.0 to 1.0)
     current_volume_scalar = volume.GetMasterVolumeLevelScalar()
     print(f"Current Volume (Scalar): {current_volume_scalar:.2f}")
 
+
 def Set_Audio_Levels(volume_level):
+    if volume_level > 1.0:
+        volume_level = 1.0
+    
+    elif volume_level < 0.0:
+        volume_level = 0.0
+    
+    elif volume_level == None:
+        volume_level = 0.0
 
     # Set the master volume to a specific level (0.0 to 1.0)
     volume.SetMasterVolumeLevelScalar(volume_level, None)
-        
-def Get_Finger_Distance():
-    global imageRGB
-    success, image = cap.read()
-    imageRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    imageRGB = cv2.flip(imageRGB,1)
 
+
+def Finger_Distance_To_Audio_Level():
     resultsHands = hands.process(imageRGB)
-
-    imageRGB = cv2.cvtColor(imageRGB, cv2.COLOR_RGB2BGR)
 
     if resultsHands.multi_hand_landmarks:
         for handLms in resultsHands.multi_hand_landmarks:
@@ -53,12 +64,28 @@ def Get_Finger_Distance():
             # Get the coordinates of the thumb and index finger tips
             thumb_tip = handLms.landmark[4]
             index_tip = handLms.landmark[8]
-
-            # Calculate the pixel distance between the thumb and index finger tips
+            
+            # Calculate the pixel distance between the right thumb and index finger tips
             distance = math.dist((thumb_tip.x, thumb_tip.y), (index_tip.x, index_tip.y))
+            #print(f"Distance: {distance:.2f}")
+
+            # Normalize the distance using the area of the frame
+            normalized_distance = distance / frame_area
+
+            # Define the minimum and maximum distances for the thumb and index finger tips
+            distance_Min_In = 0.03
+            distance_Max_In = 0.3
+
+            distance_Min_Out = 0.0
+            distance_Max_Out = 1.0
+            
+            if distance < distance_Min_In:
+                distance = distance_Min_In
+            elif distance > distance_Max_In:
+                distance = distance_Max_In
             
             # Convert distance to volume level (0.0 to 1.0)
-            volume_level = 0 + ((distance - 0.01) * (1.0 - 0)) / (0.4 - 0.01)
+            volume_level = ((distance - distance_Min_In) / (distance_Max_In - distance_Min_In)) * (distance_Max_Out - distance_Min_Out) + distance_Min_Out
 
             return volume_level
 
@@ -69,7 +96,9 @@ def Main():
 
     # Main loop for hand detection and volume control
     while True:
-        volume_level = Get_Finger_Distance()
+        Get_Frame()
+        
+        volume_level = Finger_Distance_To_Audio_Level()
 
         if volume_level is not None:
             Set_Audio_Levels(volume_level)
